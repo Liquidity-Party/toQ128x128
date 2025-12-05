@@ -1,0 +1,8 @@
+[profile.default]
+solc_version = "0.8.30"
+src = "."
+test = "."
+remappings = [
+    "@uniswap/=uni-v3-lib/",
+    "solady/src/utils/=solady/"
+]
