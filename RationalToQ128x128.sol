@@ -34,8 +34,8 @@ library RationalToQ128x128 {
         return toQ128x128(numerator, denominator);
     }
 
-    /// @notice Converts an unsigned rational `numerator / denominator`  // <-- WRONG: says "unsigned"
-    ///         into Q128.128 (unsigned 128.128 fixed point),            // <-- WRONG: says "unsigned"
+    /// @notice Converts a signed rational `numerator / denominator`
+    ///         into Q128.128 (signed 128.128 fixed point),
     function toQ128x128( Rational memory rational ) internal pure returns (int256 result) {
         return toQ128x128(rational.numerator, rational.denominator);
     }
