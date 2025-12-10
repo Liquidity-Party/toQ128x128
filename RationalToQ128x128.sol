@@ -3,7 +3,6 @@ pragma solidity ^0.8.20;
 
 /// @author Vibed by ChatGPT 5.1 improved by Tim Olson 1.0
 library RationalToQ128x128 {
-
     struct Rational {
         int256 numerator;
         int256 denominator;
@@ -15,7 +14,7 @@ library RationalToQ128x128 {
     }
 
     /// @notice Converts a signed rational struct into signed Q128.128 fixed point
-    function toQ128x128S( Rational memory rational ) internal pure returns (int256 result) {
+    function toQ128x128S(Rational memory rational) internal pure returns (int256 result) {
         return toQ128x128(rational.numerator, rational.denominator);
     }
 
@@ -25,7 +24,7 @@ library RationalToQ128x128 {
     }
 
     /// @notice Converts an unsigned rational struct into unsigned Q128.128 fixed point
-    function toQ128x128U( UnsignedRational memory rational ) internal pure returns (uint256 result) {
+    function toQ128x128U(UnsignedRational memory rational) internal pure returns (uint256 result) {
         return toQ128x128(rational.numerator, rational.denominator);
     }
 
@@ -36,7 +35,7 @@ library RationalToQ128x128 {
 
     /// @notice Converts a signed rational `numerator / denominator`
     ///         into Q128.128 (signed 128.128 fixed point),
-    function toQ128x128( Rational memory rational ) internal pure returns (int256 result) {
+    function toQ128x128(Rational memory rational) internal pure returns (int256 result) {
         return toQ128x128(rational.numerator, rational.denominator);
     }
 
@@ -51,7 +50,7 @@ library RationalToQ128x128 {
     ///      This computes floor(numerator * 2^128 / denominator)
     ///      for positive results, and ceil(numerator * 2^128 / denominator)
     ///      for negative results (rounding toward zero in both cases).
-    function toQ128x128( UnsignedRational memory rational ) internal pure returns (uint256 result) {
+    function toQ128x128(UnsignedRational memory rational) internal pure returns (uint256 result) {
         return toQ128x128(rational.numerator, rational.denominator);
     }
 
@@ -133,7 +132,7 @@ library RationalToQ128x128 {
         // This is the cheap path: just do a normal 256-bit division.
         if (prod1 == 0) {
             unchecked {
-            // denominator was already checked for 0.
+                // denominator was already checked for 0.
                 return prod0 / denominator;
             }
         }
@@ -235,4 +234,142 @@ library RationalToQ128x128 {
         }
     }
 
+    //
+    // General muldiv using Rationals
+    //
+
+    function mul(Rational memory rational, int256 y) internal pure returns (int256) {
+        return mulDiv(rational.numerator, y, rational.denominator);
+    }
+
+    function mul(UnsignedRational memory rational, uint256 y) internal pure returns (uint256) {
+        return mulDiv(rational.numerator, y, rational.denominator);
+    }
+
+    function mulDivS(int256 x, int256 y, int256 denominator) internal pure returns (int256 result) {
+        return mulDiv(x, y, denominator);
+    }
+
+    function mulDivU(uint256 x, uint256 y, uint256 denominator) internal pure returns (uint256 result) {
+        return mulDiv(x, y, denominator);
+    }
+
+    /// @notice Signed wrapper for full-precision mulDiv.
+    ///         Computes trunc(x * y / denominator) toward zero with 512-bit precision.
+    ///
+    /// @dev Mirrors `toQ128x128(int256,int256)` sign handling.
+    ///      Reverts if `denominator == 0` or magnitude overflows int256.
+    function mulDiv(int256 x, int256 y, int256 denominator) internal pure returns (int256 result) {
+        require(denominator != 0, "mulDiv: div by zero");
+
+        // Determine the sign of the result
+        bool negative = (x < 0) != (y < 0) != (denominator < 0);
+
+        // Absolute values with care for MIN int
+        uint256 ax;
+        if (x == type(int256).min) {
+            ax = uint256(type(int256).max) + 1;
+        } else {
+            ax = x >= 0 ? uint256(x) : uint256(-x);
+        }
+
+        uint256 ay;
+        if (y == type(int256).min) {
+            ay = uint256(type(int256).max) + 1;
+        } else {
+            ay = y >= 0 ? uint256(y) : uint256(-y);
+        }
+
+        uint256 ad;
+        if (denominator == type(int256).min) {
+            ad = uint256(type(int256).max) + 1;
+        } else {
+            ad = denominator >= 0 ? uint256(denominator) : uint256(-denominator);
+        }
+
+        uint256 unsignedResult = mulDiv(ax, ay, ad);
+
+        // Ensure it fits in int256 to apply sign
+        require(unsignedResult <= uint256(type(int256).max), "mulDiv: signed overflow");
+
+        result = negative ? -int256(unsignedResult) : int256(unsignedResult);
+    }
+
+    /// @notice Full-precision mulDiv: computes floor(x * y / denominator)
+    ///         with 512-bit intermediate precision to avoid overflow.
+    ///
+    /// @dev Reverts if `denominator == 0` or the exact result >= 2^256.
+    ///      The implementation mirrors the 512/256 division flow used by
+    ///      `toQ128x128(uint256,uint256)`, but with a general multiplicand `y`
+    ///      instead of the fixed 2^128 shift.
+    function mulDiv(uint256 x, uint256 y, uint256 denominator) internal pure returns (uint256 result) {
+        require(denominator != 0, "mulDiv: div by zero");
+
+        // Compute the 512-bit product [prod1 prod0] = x * y.
+        // mm = (x * y) mod (2^256 - 1)
+        // prod0 = (x * y) mod 2^256
+        // prod1 = (x * y - prod0 - (mm < prod0 ? 1 : 0)) / 2^256
+        uint256 prod0;
+        uint256 prod1;
+        assembly {
+            let mm := mulmod(x, y, not(0))
+            prod0 := mul(x, y)
+            prod1 := sub(sub(mm, prod0), lt(mm, prod0))
+        }
+
+        // If the high 256 bits are zero, we can do a simple 256-bit division.
+        if (prod1 == 0) {
+            unchecked {
+                return prod0 / denominator;
+            }
+        }
+
+        // Ensure result < 2^256. This is equivalent to requiring denominator > prod1.
+        require(denominator > prod1, "mulDiv: overflow");
+
+        // Make division exact by subtracting the remainder from [prod1 prod0].
+        uint256 remainder;
+        assembly {
+            remainder := mulmod(x, y, denominator)
+            // Subtract remainder from the low part; if it underflows, borrow 1 from the high part.
+            let borrow := lt(prod0, remainder)
+            prod0 := sub(prod0, remainder)
+            prod1 := sub(prod1, borrow)
+        }
+
+        // Factor powers of two out of denominator to simplify the division.
+        uint256 twos;
+        unchecked {
+            twos = denominator & (~denominator + 1); // largest power of two divisor of denominator
+        }
+
+        assembly {
+            // Divide denominator by twos.
+            denominator := div(denominator, twos)
+
+            // Divide the low word by twos.
+            prod0 := div(prod0, twos)
+
+            // Compute twos = 2^256 / twos.
+            twos := add(div(sub(0, twos), twos), 1)
+
+            // Shift bits from the high word into the low word.
+            prod0 := or(prod0, mul(prod1, twos))
+        }
+
+        // Compute modular inverse of the (now odd) denominator modulo 2^256
+        // via Newton-Raphson iterations.
+        unchecked {
+            uint256 inv = (3 * denominator) ^ 2;
+            inv *= 2 - denominator * inv; // 2^8
+            inv *= 2 - denominator * inv; // 2^16
+            inv *= 2 - denominator * inv; // 2^32
+            inv *= 2 - denominator * inv; // 2^64
+            inv *= 2 - denominator * inv; // 2^128
+            inv *= 2 - denominator * inv; // 2^256
+
+            // Exact division: result = prod0 * inv mod 2^256
+            result = prod0 * inv;
+        }
+    }
 }
