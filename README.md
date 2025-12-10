@@ -8,6 +8,12 @@ This implementation uses the same modular inverse technique pioneered by Uniswap
 
 There is also a general 512-bit muldiv included, so the community has an MIT-licensed alternative to Uniswap's FullMath. For creating Q128.128's, the specialized muldiv uses less gas and should be preferred.
 
+**Usage**
+
+`RationalToQ128x128.sol` is a standalone file with zero dependencies.
+
+For testing, we compare the behavior of the new code with the established known-good Uniswap `FullMath` implementation, as revised for Solidity 0.8. This 0.8 version of `FullMath` relies on a fixed-point library from `solady`, so we have copied these test dependencies into `uni-v3-lib/` and `solady/`, which are licensed separately.
+
 ## Test Cases
 
 Install the Foundry Toolkit:
